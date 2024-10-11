@@ -1,0 +1,53 @@
+# Define variables
+$backupSource = "C:\Users\YourUsername\Documents"
+$backupDestination = "\\NASDrive\Backup"
+$awsBucketName = "your-s3-bucket"
+$awsRegion = "us-east-1"
+$zipFileName = "Backup_$((Get-Date).ToString('yyyyMMdd')).zip"
+$emailRecipient = "youremail@example.com"
+$emailSender = "backupnotification@example.com"
+$smtpServer = "smtp.mailtrap.io"
+$smtpPort = 587
+$smtpUsername = "your_smtp_username"
+$smtpPassword = "your_smtp_password"
+
+# Function to send email notification
+function Send-EmailNotification {
+    param (
+        [string]$subject,
+        [string]$body
+    )
+    
+    $emailMessage = New-Object system.net.mail.mailmessage
+    $emailMessage.from = $emailSender
+    $emailMessage.To.add($emailRecipient)
+    $emailMessage.Subject = $subject
+    $emailMessage.Body = $body
+    $emailMessage.IsBodyHtml = $false
+
+    $smtpClient = New-Object system.net.mail.smtpclient
+    $smtpClient.host = $smtpServer
+    $smtpClient.Port = $smtpPort
+    $smtpClient.EnableSsl = $true
+    $smtpClient.Credentials = New-Object System.Net.NetworkCredential($smtpUsername, $smtpPassword)
+
+    $smtpClient.Send($emailMessage)
+}
+
+# Create ZIP archive of backup source folder
+try {
+    Compress-Archive -Path $backupSource -DestinationPath "$backupDestination\$zipFileName"
+    Write-Host "Backup created successfully."
+
+    # Upload to AWS S3
+    aws s3 cp "$backupDestination\$zipFileName" "s3://$awsBucketName/" --region $awsRegion
+    Write-Host "Backup uploaded to AWS S3 successfully."
+
+    # Send success email
+    Send-EmailNotification -subject "Backup Success: $zipFileName" -body "Backup and upload to S3 completed successfully."
+}
+catch {
+    Write-Host "Error during backup: $_"
+    # Send failure email
+    Send-EmailNotification -subject "Backup Failure: $zipFileName" -body "Backup or upload to S3 failed. Error: $_"
+}
